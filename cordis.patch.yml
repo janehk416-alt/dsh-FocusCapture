@@ -1,0 +1,4 @@
+- insert:
+    - id: local-dual-ctrl-snip
+      name: '@local/dsh-focuscapture'
+      config: {}

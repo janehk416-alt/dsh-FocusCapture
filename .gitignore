@@ -1,0 +1,33 @@
+# Dependencies (the plugin itself has no npm install requirement)
+node_modules/
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+Desktop.ini
+.vscode/
+.idea/
+
+# Logs and temporary files
+*.log
+*.tmp
+*.bak
+*.swp
+
+# Python caches
+__pycache__/
+*.py[cod]
+
+# Local verification and diagnostic output
+verification/
+*.local.png
+
+# Intermediate or probe binaries; keep the required runtime EXE committed
+native/DualCtrlSnip-next.exe
+tests/KeyboardProbe.exe
+
+# Superseded icon (active icon: icon.png)
+/icon.svg
+
+# Archives created for upload or release
+*.zip
