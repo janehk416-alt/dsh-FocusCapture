@@ -15,7 +15,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/Code%20License-MIT-green" alt="MIT license"></a>
 </p>
 
-无需离开当前聊天，即可框选屏幕、添加标注、复制或保存截图，并将图片放入当前聊天的附件草稿。支持 **左 Ctrl + 右 Ctrl** 全局快捷键、紧凑编辑工具栏，以及跨应用置顶贴图。
+可框选屏幕、添加标注、复制或保存截图，把图片作为附件放入当前聊天框中。支持 **左 Ctrl + 右 Ctrl** 全局快捷键、紧凑编辑工具栏，以及跨应用置顶贴图。
 
 **English:** A Windows screenshot and annotation plugin for DeepSeek Harness, with a dual-Ctrl shortcut, always-on-top pinned images, PNG export, and direct attachment to the current chat draft. See [Releases](https://github.com/janehk416-alt/dsh-FocusCapture/releases) for downloads.
 
@@ -36,10 +36,6 @@
 
 <p align="center">
   <img src="docs/images/compact-toolbar.png" alt="dsh-FocusCapture 紧凑截图工具栏">
-</p>
-
-<p align="center">
-  <img src="docs/images/editor-tools.png" alt="dsh-FocusCapture 标注设置与添加到对话">
 </p>
 
 工具栏保持紧凑：没有底部按钮栏、说明输入框或序号标注工具。空间不足时，工具栏会自动调整到选区上方或屏幕内。
