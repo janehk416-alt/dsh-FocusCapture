@@ -1,0 +1,36 @@
+name: Validate
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install --disable-pip-version-check -r requirements-dev.txt
+      - name: Verify generated Client
+        run: |
+          node build-client.mjs
+          git diff --exit-code -- client.js
+      - name: Node tests
+        run: npm test
+      - name: Native self-test
+        run: ./native/DualCtrlSnip.exe --self-test
+      - name: Build and verify installation ZIP
+        run: python scripts/release.py build
+      - name: Upload validated package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dsh-FocusCapture-install
+          path: |
+            dist/*.zip
+            dist/SHA256SUMS.txt
+          if-no-files-found: error

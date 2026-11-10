@@ -8,13 +8,13 @@ internal enum DrawTool { Select, Arrow, Rectangle, Circle, Text, Pen, Mosaic }
 internal sealed class Mark {
     internal DrawTool Tool;
     internal Color Color;
-    internal float Width=3,FontSize=20,TextWidth=250,TextHeight=40;
+    internal float Width=3,FontSize=20,LineSpacing=1.1f,TextWidth=250,TextHeight=40;
     internal int BlockSize=12;
     internal bool Fill,LockAspect=true;
     internal string Text="";
     internal readonly List<PointF> Points=new List<PointF>();
     internal Mark(DrawTool tool,Color color,PointF start){Tool=tool;Color=color;Points.Add(start);}
-    internal Mark Clone(){Mark m=new Mark(Tool,Color,PointF.Empty);m.Points.Clear();m.Points.AddRange(Points);m.Width=Width;m.FontSize=FontSize;m.TextWidth=TextWidth;m.TextHeight=TextHeight;m.Text=Text;m.Fill=Fill;m.LockAspect=LockAspect;m.BlockSize=BlockSize;return m;}
+    internal Mark Clone(){Mark m=new Mark(Tool,Color,PointF.Empty);m.Points.Clear();m.Points.AddRange(Points);m.Width=Width;m.FontSize=FontSize;m.LineSpacing=LineSpacing;m.TextWidth=TextWidth;m.TextHeight=TextHeight;m.Text=Text;m.Fill=Fill;m.LockAspect=LockAspect;m.BlockSize=BlockSize;return m;}
     internal static RectangleF Bounds(PointF a,PointF b){return RectangleF.FromLTRB(Math.Min(a.X,b.X),Math.Min(a.Y,b.Y),Math.Max(a.X,b.X),Math.Max(a.Y,b.Y));}
     internal static RectangleF CircleBounds(PointF a,PointF b){float s=Math.Min(Math.Abs(b.X-a.X),Math.Abs(b.Y-a.Y));return Bounds(a,new PointF(a.X+(b.X>=a.X?s:-s),a.Y+(b.Y>=a.Y?s:-s)));}
     internal bool IsVisible{get{if(Tool==DrawTool.Text)return !String.IsNullOrWhiteSpace(Text);if(Points.Count<2)return false;return Tool==DrawTool.Pen||Tool==DrawTool.Mosaic||Math.Abs(Points[1].X-Points[0].X)>1||Math.Abs(Points[1].Y-Points[0].Y)>1;}}
@@ -49,7 +49,7 @@ internal sealed class Mark {
         using(Pen pen=new Pen(Color,Width))using(Brush brush=new SolidBrush(Color)){
             pen.StartCap=LineCap.Round;pen.EndCap=LineCap.Round;pen.LineJoin=LineJoin.Round;PointF first=Points[0];
             if(Tool==DrawTool.Pen){if(Points.Count==2&&Points[0]==Points[1])g.FillEllipse(brush,first.X-Width/2,first.Y-Width/2,Width,Width);else g.DrawLines(pen,Points.ToArray());}
-            else if(Tool==DrawTool.Text){using(Font font=new Font("Microsoft YaHei UI",FontSize,FontStyle.Regular,GraphicsUnit.Pixel))using(StringFormat format=(StringFormat)StringFormat.GenericTypographic.Clone()){format.FormatFlags&=~StringFormatFlags.NoWrap;g.DrawString(Text,font,brush,new RectangleF(first.X,first.Y,Math.Max(8,TextWidth),Math.Max(TextHeight,FontSize*1.6f)),format);}}
+            else if(Tool==DrawTool.Text){using(Font font=UiTypography.ForText(Text,FontSize))UiTypography.DrawAnnotation(g,Text,font,brush,new RectangleF(first.X,first.Y,Math.Max(8,TextWidth),Math.Max(TextHeight,FontSize*1.6f)),LineSpacing);}
             else if(Tool==DrawTool.Arrow){using(AdjustableArrowCap cap=new AdjustableArrowCap(4,5,true)){pen.CustomEndCap=cap;g.DrawLine(pen,first,Points[1]);}}
             else{RectangleF b=Tool==DrawTool.Circle&&LockAspect?CircleBounds(first,Points[1]):Bounds(first,Points[1]);if(b.Width<=0||b.Height<=0)return;if(Tool==DrawTool.Rectangle){if(Fill)g.FillRectangle(brush,b);else g.DrawRectangle(pen,b.X,b.Y,b.Width,b.Height);}else if(Tool==DrawTool.Circle){if(Fill)g.FillEllipse(brush,b);else g.DrawEllipse(pen,b);}}
         }
@@ -82,6 +82,7 @@ internal sealed class MarkScene : IDisposable {
     public void Dispose(){foreach(Bitmap b in mosaics.Values)b.Dispose();mosaics.Clear();Marks.Clear();undo.Clear();redo.Clear();}
 }
 internal static class EditorLayout {
+    internal static bool ImmediateBorder(bool selecting,bool movingCrop,bool scalingMark,int resize){return selecting||movingCrop||(!scalingMark&&resize>=0);}
     internal static Rectangle Toolbar(Rectangle selection,Size toolbar,Rectangle screen,int extra){int x=selection.Right-toolbar.Width,y=selection.Bottom+10;if(y+toolbar.Height+extra>screen.Bottom)y=selection.Top-toolbar.Height-extra-10;x=Math.Max(screen.Left+4,Math.Min(screen.Right-toolbar.Width-4,x));y=Math.Max(screen.Top+4,Math.Min(screen.Bottom-toolbar.Height-extra-4,y));return new Rectangle(x,y,toolbar.Width,toolbar.Height);}
     internal static Rectangle Dirty(Rectangle old,Rectangle next,Rectangle viewport){Rectangle r=old.IsEmpty?next:next.IsEmpty?old:Rectangle.Union(old,next);r.Inflate(12,36);return Rectangle.Intersect(r,viewport);}
 }
@@ -102,7 +103,8 @@ internal static class DrawingTests {
             Mark mosaic=new Mark(DrawTool.Mosaic,Color.Black,new Point(30,70));mosaic.Width=20;mosaic.Points.Add(new Point(120,70));scene.Add(mosaic);using(Bitmap b=scene.Export(image,clip)){if(b.Width!=160)throw new Exception("mosaic");}
             scene.Remove(mosaic);scene.Undo();if(scene.Marks[scene.Marks.Count-1].Tool!=DrawTool.Mosaic)throw new Exception("delete-undo");
             Rectangle dirty=EditorLayout.Dirty(new Rectangle(50,50,10,10),new Rectangle(55,55,10,10),new Rectangle(0,0,3840,2160));if(dirty.Width>50||dirty.Height>100)throw new Exception("dirty-repaint");
+            if(!EditorLayout.ImmediateBorder(true,false,false,-1)||!EditorLayout.ImmediateBorder(false,true,false,-1)||!EditorLayout.ImmediateBorder(false,false,false,0)||EditorLayout.ImmediateBorder(false,false,true,0)||EditorLayout.ImmediateBorder(false,false,false,-1))throw new Exception("immediate-border-scheduling");
         }
-        return new string[]{"seven-colors","clipping","circle-ellipse","toolbar-placement","arrow-four-directions","fill-width","hit-select","move-undo","undo-redo","delete-undo","text-pen-export","mosaic-cache","source-preserved","local-dirty-region"};
+        return new string[]{"seven-colors","clipping","circle-ellipse","toolbar-placement","arrow-four-directions","fill-width","hit-select","move-undo","undo-redo","delete-undo","text-pen-export","mosaic-cache","source-preserved","local-dirty-region","immediate-border-scheduling"};
     }
 }

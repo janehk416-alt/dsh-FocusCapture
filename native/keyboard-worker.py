@@ -1,9 +1,17 @@
-"""Local Ctrl-only worker: no hooks, no text/other keys, no files, no network."""
+"""Local selected-shortcut worker: no hooks, files, network, or unselected keys."""
 import ctypes
-import os
+import json
 import sys
 import threading
 import time
+
+DEFAULT_KEYS = [
+    {'vk': [0xA2], 'probe': {'vk': 0xA2, 'scan': 0x1D, 'flags': 0}},
+    {'vk': [0xA3], 'probe': {'vk': 0xA3, 'scan': 0x1D, 'flags': 1}},
+]
+config = json.loads(sys.argv[2]) if len(sys.argv) > 2 and sys.argv[2] != '--probe' else {'keys': DEFAULT_KEYS}
+keys = config['keys']
+probe = '--probe' in sys.argv[2:]
 
 user32 = ctypes.WinDLL('user32', use_last_error=True)
 kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
@@ -19,9 +27,19 @@ kernel32.CloseHandle.argtypes = [ctypes.c_void_p]
 parent = kernel32.OpenProcess(0x00100000, False, int(sys.argv[1]))
 if not parent:
     raise OSError(ctypes.get_last_error(), 'Cannot retain screenshot parent')
-probe = '--probe' in sys.argv[2:]
 stop = threading.Event()
 threading.Thread(target=lambda: (sys.stdin.buffer.read(), stop.set()), daemon=True).start()
+
+
+def emit_probe_key(key, release):
+    spec = key['probe']
+    user32.keybd_event(spec['vk'], spec['scan'], spec['flags'] | (2 if release else 0), 0)
+
+
+def selected_key_down(key):
+    return any(bool(user32.GetAsyncKeyState(vk) & 0x8000) for vk in key['vk'])
+
+
 print('READY', flush=True)
 start = time.monotonic()
 latched = False
@@ -34,28 +52,27 @@ try:
             break
         elapsed = time.monotonic() - start
         if probe and not pressed and elapsed > 0.25:
-            user32.keybd_event(0xA2, 0x1D, 0, 0)
-            user32.keybd_event(0xA3, 0x1D, 1, 0)
+            for key in keys:
+                emit_probe_key(key, False)
             pressed = True
         if probe and pressed and not released and elapsed > 0.55:
-            user32.keybd_event(0xA2, 0x1D, 2, 0)
-            user32.keybd_event(0xA3, 0x1D, 3, 0)
+            for key in reversed(keys):
+                emit_probe_key(key, True)
             released = True
         samples += 1
         if probe and elapsed > 1 and not reported:
             print('PROBE samples=' + str(samples) + ' paired=' + str(paired), flush=True)
             reported = True
-        left = bool(user32.GetAsyncKeyState(0xA2) & 0x8000)
-        right = bool(user32.GetAsyncKeyState(0xA3) & 0x8000)
-        if left and right:
+        states = [selected_key_down(key) for key in keys]
+        if all(states):
             paired += 1
-        if not left and not right:
+        if not any(states):
             latched = False
-        if left and right and not latched:
+        if all(states) and not latched:
             latched = True
             print('TRIGGER', flush=True)
 finally:
     if probe:
-        user32.keybd_event(0xA2, 0x1D, 2, 0)
-        user32.keybd_event(0xA3, 0x1D, 3, 0)
+        for key in reversed(keys):
+            emit_probe_key(key, True)
     kernel32.CloseHandle(parent)

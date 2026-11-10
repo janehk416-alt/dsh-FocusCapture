@@ -1,8 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { apply } from '../index.js';
+import { bundledRuntimeOrNull, isolatedDshHome } from './runtime-testkit.js';
 
-test('authenticated route registration, origin checks, Session binding and unload', {skip:process.platform !== 'win32'}, async () => {
+test('authenticated route registration, origin checks, Session binding and unload', {skip:process.platform !== 'win32' || !bundledRuntimeOrNull()}, async t => {
+  isolatedDshHome(t);
   let route, cleanup, unregistered=false;
   apply({ effect(setup){cleanup=setup();},connection:{fetch:{register(value){route=value;return async()=>{unregistered=true;};}}} });
   try {
@@ -13,7 +15,7 @@ test('authenticated route registration, origin checks, Session binding and unloa
     assert.equal((await request({clientId:'x',sessionId:'s',focused:true,action:'bind'})).status,200);
     await new Promise(resolve=>setTimeout(resolve,1100));
     const response=await route.fetch(new Request('http://127.0.0.1:8625/api/dual-ctrl-snip'));
-    const status=await response.json(); assert.equal(status.ready,true);assert.equal(status.keyboardReady,true);assert.equal(status.nativeVersion,'1.3.0');assert.equal(status.armed,true);assert.equal(status.targetSession,'s');
+    const status=await response.json(); assert.equal(status.ready,true);assert.equal(status.keyboardReady,true);assert.equal(status.nativeVersion,'1.4.0');assert.equal(status.armed,true);assert.equal(status.targetSession,'s');
     assert.equal((await request({clientId:'x',action:'unsupported'})).status,400);
     await request({clientId:'x',action:'detach'});
     const detached=await (await route.fetch(new Request('http://127.0.0.1:8625/api/dual-ctrl-snip'))).json();assert.equal(detached.armed,false);

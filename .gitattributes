@@ -1,0 +1,7 @@
+# Binary release assets
+*.png binary
+*.ttf binary
+*.exe binary
+
+# Preserve the upstream font license byte-for-byte, including CRLF.
+native/fonts/OFL.txt -text -diff

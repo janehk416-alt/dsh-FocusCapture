@@ -38,7 +38,7 @@ internal static class Program {
         else if(line=="arm")armed=true;else if(line=="disarm")armed=false;
         else if(line=="english")english=true;else if(line=="chinese")english=false;
         else if(line=="capture")CaptureRegion();
-        else if(line=="status")Emit(new{kind="native-status",armed=armed,busy=busy,version="1.3.0"});
+        else if(line=="status")Emit(new{kind="native-status",armed=armed,busy=busy,version="1.4.0"});
     }
     [STAThread] private static int Main(string[] args){
         Console.InputEncoding=new UTF8Encoding(false);Console.OutputEncoding=new UTF8Encoding(false);
@@ -58,7 +58,7 @@ internal static class Program {
         System.Windows.Forms.Timer timer=new System.Windows.Forms.Timer();timer.Interval=1000;
         timer.Tick+=delegate{if(parent!=IntPtr.Zero&&Native.WaitForSingleObject(parent,0)!=258)Application.ExitThread();};
         Thread reader=new Thread(delegate(){try{string line;while((line=Console.ReadLine())!=null){string next=line;Post(delegate{Command(next);});}}catch{}Post(delegate{Application.ExitThread();});});
-        reader.IsBackground=true;reader.Start();timer.Start();Emit(new{kind="ready",pid=Process.GetCurrentProcess().Id,version="1.3.0"});
+        reader.IsBackground=true;reader.Start();timer.Start();Emit(new{kind="ready",pid=Process.GetCurrentProcess().Id,version="1.4.0"});
         try{Application.Run();}
         finally{closing=true;timer.Dispose();PinnedShot.CloseAll();if(overlay!=null)overlay.Dispose();dispatcher.Dispose();if(parent!=IntPtr.Zero)Native.CloseHandle(parent);}
         return 0;

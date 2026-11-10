@@ -29,5 +29,8 @@ tests/KeyboardProbe.exe
 # Superseded icon (active icon: icon.png)
 /icon.svg
 
+# Local release output
+dist/
+
 # Archives created for upload or release
 *.zip

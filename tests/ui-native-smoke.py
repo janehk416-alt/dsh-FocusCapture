@@ -26,6 +26,7 @@ u.SendMessageTimeoutW.argtypes = [HWND, C.c_uint, C.c_size_t, C.c_ssize_t, C.c_u
 u.SendMessageTimeoutW.restype = HWND
 u.GetWindowLongPtrW.argtypes = [HWND, C.c_int]
 u.GetWindowLongPtrW.restype = C.c_ssize_t
+u.HideCaret.argtypes = [HWND]
 class RECT(C.Structure):
     _fields_ = [('left', C.c_long), ('top', C.c_long), ('right', C.c_long), ('bottom', C.c_long)]
 u.GetWindowRect.argtypes = [HWND, C.POINTER(RECT)]
@@ -51,6 +52,8 @@ def command(text):
     p.stdin.write(text+'\n'); p.stdin.flush()
 def name(hwnd):
     text = C.create_unicode_buffer(512); u.GetWindowTextW(hwnd, text, len(text)); return text.value
+def edit_text(hwnd):
+    text = C.create_unicode_buffer(1024); send(hwnd, 0x0d, 1023, C.cast(text, C.c_void_p).value); return text.value
 def windows(parent=None):
     result = []
     @CALLBACK
@@ -84,14 +87,26 @@ def drag(hwnd, a, b):
     mouse(hwnd, 0x201, *a, True)
     mouse(hwnd, 0x200, *b, True)
     mouse(hwnd, 0x202, *b)
+def drag_smooth(hwnd, a, b, steps=40):
+    mouse(hwnd, 0x201, *a, True)
+    samples = []
+    for i in range(1, steps + 1):
+        point = (round(a[0] + (b[0] - a[0]) * i / steps), round(a[1] + (b[1] - a[1]) * i / steps))
+        started = time.perf_counter()
+        mouse(hwnd, 0x200, *point, True)
+        samples.append((time.perf_counter() - started) * 1000)
+    mouse(hwnd, 0x202, *b)
+    average = sum(samples) / len(samples); maximum = max(samples)
+    assert average < 80 and maximum < 400, ('Border drag stalled', average, maximum)
+    return {'averageMs': round(average, 2), 'maxMs': round(maximum, 2), 'steps': steps}
 def button(form, title):
     hwnd = wait_window(title, form); send(hwnd, 0xf5); return hwnd
 try:
-    ready = event('ready'); assert ready['version'] == '1.3.0', ready
+    ready = event('ready'); assert ready['version'] == '1.4.0', ready
     command('arm'); command('status'); status=event('native-status'); assert status['armed'], status
     command('capture')
     form = wait_window('dsh-FocusCapture')
-    drag(form, (100, 100), (720, 390))
+    border_timing = drag_smooth(form, (100, 100), (720, 390))
     shape = button(form, '矩形 / 椭圆')
     panel = u.GetParent(shape)
     mouse(panel, 0x201, 200, 100, True); mouse(panel, 0x202, 200, 100)
@@ -107,6 +122,13 @@ try:
     button(form, '撤销'); button(form, '重做')
     button(form, '马赛克'); drag(form, (360, 220), (550, 220))
     button(form, '文字')
+    mouse(panel, 0x201, 110, 100, True); mouse(panel, 0x202, 110, 100)  # Font size
+    mouse(panel, 0x201, 280, 100, True); mouse(panel, 0x202, 280, 100)  # Line spacing
+    mouse(panel, 0x201, 72, 100, True); mouse(panel, 0x202, 72, 100)  # Restore 20px for background comparison
+    if os.environ.get('DSH_EDITOR_PANEL_CAPTURE'):
+        time.sleep(.12); bounds=RECT();u.GetWindowRect(panel,C.byref(bounds));panel_path=pathlib.Path(os.environ['DSH_EDITOR_PANEL_CAPTURE'])
+        text_panel_path=panel_path.with_name(panel_path.stem+'-text-settings'+panel_path.suffix)
+        ImageGrab.grab(bbox=(bounds.left,bounds.top,bounds.right,bounds.bottom),all_screens=True).save(text_panel_path)
     mouse(panel, 0x201, 195, 64, True); mouse(panel, 0x202, 195, 64)
     form_bounds=RECT();u.GetWindowRect(form,C.byref(form_bounds))
     time.sleep(.08)
@@ -128,6 +150,29 @@ try:
     background_after=ImageGrab.grab(bbox=text_rect,all_screens=True).convert('RGB')
     diff=ImageChops.difference(background_before.crop((0,50,300,110)),background_after.crop((0,50,300,110)))
     assert diff.getbbox() is None, ('Text input replaced screenshot background',diff.getbbox())
+    delete_text=C.create_unicode_buffer('DELETE');send(edit,0x0c,0,C.cast(delete_text,C.c_void_p).value);time.sleep(.08)
+    u.HideCaret(edit);delete_before=ImageGrab.grab(bbox=text_rect,all_screens=True).convert('RGB')
+    send(edit,0x100,0x24,1);send(edit,0x101,0x24,0xc0000001)  # Home
+    send(edit,0x100,0x2e,1);send(edit,0x101,0x2e,0xc0000001)  # Delete
+    time.sleep(.10);assert edit_text(edit)=='ELETE',edit_text(edit)
+    u.HideCaret(edit);delete_after=ImageGrab.grab(bbox=text_rect,all_screens=True).convert('RGB')
+    assert ImageChops.difference(delete_before,delete_after).getbbox() is not None,'Delete changed text but left stale rendered glyphs'
+    remaining=C.create_unicode_buffer('ELETE');send(edit,0x0c,0,C.cast(remaining,C.c_void_p).value);time.sleep(.08);u.HideCaret(edit)
+    delete_expected=ImageGrab.grab(bbox=text_rect,all_screens=True).convert('RGB')
+    if os.environ.get('DSH_TEXT_DELETE_CAPTURE'):
+        capture_dir=pathlib.Path(os.environ['DSH_TEXT_DELETE_CAPTURE']);capture_dir.mkdir(parents=True,exist_ok=True)
+        delete_after.save(capture_dir/'delete-after.png');delete_expected.save(capture_dir/'delete-expected.png')
+    assert ImageChops.difference(delete_after,delete_expected).getbbox() is None,'Delete left pixels that differ from freshly entered remaining text'
+    send(edit,0x100,0x23,1);send(edit,0x101,0x23,0xc0000001)  # End
+    send(edit,0x100,0x08,1);send(edit,0x102,0x08,1);send(edit,0x101,0x08,0xc0000001)  # Backspace key + translated character
+    time.sleep(.10);assert edit_text(edit)=='ELET',edit_text(edit)
+    send(edit,0xB1,0,0);u.HideCaret(edit);backspace_after=ImageGrab.grab(bbox=text_rect,all_screens=True).convert('RGB')
+    shorter=C.create_unicode_buffer('ELET');send(edit,0x0c,0,C.cast(shorter,C.c_void_p).value);send(edit,0xB1,0,0);time.sleep(.08);u.HideCaret(edit)
+    backspace_expected=ImageGrab.grab(bbox=text_rect,all_screens=True).convert('RGB')
+    if os.environ.get('DSH_TEXT_DELETE_CAPTURE'):
+        capture_dir=pathlib.Path(os.environ['DSH_TEXT_DELETE_CAPTURE']);capture_dir.mkdir(parents=True,exist_ok=True)
+        backspace_after.save(capture_dir/'backspace-after.png');backspace_expected.save(capture_dir/'backspace-expected.png')
+    assert ImageChops.difference(backspace_after,backspace_expected).getbbox() is None,'Backspace left stale glyph pixels'
     empty=C.create_unicode_buffer('');send(edit,0x0c,0,C.cast(empty,C.c_void_p).value);time.sleep(.05)
     cleared=ImageGrab.grab(bbox=text_rect,all_screens=True).convert('RGB')
     cleared_diff=ImageChops.difference(background_before.crop((4,4,296,106)),cleared.crop((4,4,296,106)))
@@ -150,9 +195,14 @@ try:
     pin = wait_window('dsh-FocusCapture · 贴图')
     assert u.GetWindowLongPtrW(pin, -20) & 8, 'Missing WS_EX_TOPMOST'
     send(pin, 0x10)
+    command('capture')
+    form = wait_window('dsh-FocusCapture'); drag_smooth(form, (100, 100), (500, 300))
+    border_resize = drag_smooth(form, (500, 300), (540, 340), 20); time.sleep(.7)
+    border_move = drag_smooth(form, (300, 220), (330, 250), 20)
+    mouse(form, 0x204, 20, 20); event('cancel')
     command('stop'); p.stdin.close(); p.wait(timeout=4)
     assert p.returncode == 0, p.returncode
-    print(json.dumps({'ok':True,'nativeVersion':ready['version'],'tested':['real-selection','shape-settings-fill','arrow','undo-redo','mosaic','Chinese-text-commit','native-text-background-pixel-match','borderless-text','return-after-copy','no-footer-row','PNG-export-620x290','real-pin-WS_EX_TOPMOST','owned-window-cleanup'],'clipboardChanged':False,'imagesSaved':False}, ensure_ascii=False))
+    print(json.dumps({'ok':True,'nativeVersion':ready['version'],'borderDrag':border_timing,'borderResize':border_resize,'borderMove':border_move,'tested':['real-selection','continuous-border-tracking','shape-settings-fill','arrow','undo-redo','mosaic','Chinese-text-commit','font-size-line-spacing-controls','delete-backspace-pixel-match','native-text-background-pixel-match','borderless-text','return-after-copy','no-footer-row','PNG-export-620x290','real-pin-WS_EX_TOPMOST','owned-window-cleanup'],'clipboardChanged':False,'imagesSaved':False}, ensure_ascii=False))
 finally:
     if p.poll() is None:
         try:

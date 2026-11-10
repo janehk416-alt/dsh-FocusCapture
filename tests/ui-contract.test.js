@@ -2,14 +2,24 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 
-test('composer has only an SVG capture button, without visible label, status or tooltip text',()=>{
+test('composer stays icon-only normally and shows a readable error only on failure',()=>{
   const client=readFileSync(new URL('../client.js',import.meta.url),'utf8');
   assert.ok(client.includes("h('svg'"));
   assert.ok(client.includes("'aria-label':t('button')"));
   assert.ok(!client.includes('snip-status'));
-  assert.ok(!client.includes("role:'status'"));
   assert.ok(!client.includes("title:t('title')"));
   assert.ok(!client.includes(")),t('button'))"));
+  assert.ok(client.includes("errorText ? h('span'"));
+  assert.ok(client.includes("className:'dual-ctrl-snip-error'"));
+});
+test('plugin row page provides a custom shortcut editor without recording arbitrary keys',()=>{
+  const client=readFileSync(new URL('../client.js',import.meta.url),'utf8');
+  assert.ok(client.includes("plugins.row.config"));
+  assert.ok(client.includes("@local/dsh-focuscapture#local-dual-ctrl-snip"));
+  assert.ok(client.includes("action: 'set-hotkey'"));
+  assert.ok(client.includes("defaultShortcut"));
+  assert.ok(client.includes("customShortcut"));
+  assert.ok(!client.includes('onKeyDown'));
 });
 test('native editor exposes mosaic, topmost pin, save, copy, redo, but no sequence or description editor',()=>{
   const ui=readFileSync(new URL('../native/EditorUi.cs',import.meta.url),'utf8');

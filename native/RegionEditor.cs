@@ -35,7 +35,15 @@ internal sealed class RegionForm : Form {
         Shown+=delegate{Activate();Native.SetForegroundWindow(Handle);Focus();};FormClosed+=delegate{if(!settled){settled=true;result(null);}};
     }
     private void Touch(){expiry.Stop();expiry.Start();}
-    private void Dirty(Rectangle old,Rectangle next){Rectangle r=EditorLayout.Dirty(old,next,ClientRectangle);pendingPaint=pendingPaint.IsEmpty?r:Rectangle.Union(pendingPaint,r);}
+    private void Dirty(Rectangle old,Rectangle next){
+        Rectangle r=EditorLayout.Dirty(old,next,ClientRectangle);if(r.IsEmpty)return;
+        if(EditorLayout.ImmediateBorder(selecting,moveCrop,scaleMark,resize)){
+            if(!pendingPaint.IsEmpty){r=Rectangle.Union(r,pendingPaint);pendingPaint=Rectangle.Empty;}
+            if(!IsHandleCreated||IsDisposed)return;
+            // Border gestures paint inside the mouse event, not on the 16ms coalescing timer.
+            Invalidate(r);Update();
+        }else pendingPaint=pendingPaint.IsEmpty?r:Rectangle.Union(pendingPaint,r);
+    }
     private void FullSelection(){Dirty(selected,selected);}
     private void DropView(){if(view!=null){view.Dispose();view=null;}}
     private void RebuildView(Mark omit){DropView();if(selected.Width<2||selected.Height<2||(long)selected.Width*selected.Height>25000000)return;view=frozen.Clone(selected,PixelFormat.Format24bppRgb);using(Graphics g=Graphics.FromImage(view)){g.TranslateTransform(-selected.X,-selected.Y);scene.Draw(g,selected,null,omit);}}
@@ -57,7 +65,7 @@ internal sealed class RegionForm : Form {
     }
     private void ApplyStyle(){
         Touch();CommitText();
-        if(chosen!=null&&tool==DrawTool.Select){chosen.Color=panel.Ink;chosen.Fill=panel.Fill;chosen.Width=chosen.Tool==DrawTool.Mosaic?Math.Max(18,panel.Stroke*7):panel.Stroke;chosen.BlockSize=panel.MosaicSize;chosen.FontSize=panel.FontSize;if(chosen.Tool==DrawTool.Rectangle||chosen.Tool==DrawTool.Circle){chosen.Tool=panel.Ellipse?DrawTool.Circle:DrawTool.Rectangle;chosen.LockAspect=false;}RebuildView(null);}
+        if(chosen!=null&&tool==DrawTool.Select){chosen.Color=panel.Ink;chosen.Fill=panel.Fill;chosen.Width=chosen.Tool==DrawTool.Mosaic?Math.Max(18,panel.Stroke*7):panel.Stroke;chosen.BlockSize=panel.MosaicSize;chosen.FontSize=panel.FontSize;chosen.LineSpacing=panel.LineSpacing;if(chosen.Tool==DrawTool.Rectangle||chosen.Tool==DrawTool.Circle){chosen.Tool=panel.Ellipse?DrawTool.Circle:DrawTool.Rectangle;chosen.LockAspect=false;}RebuildView(null);}
         else if(tool==DrawTool.Rectangle||tool==DrawTool.Circle)tool=panel.Tool;
         RefreshPanel();FullSelection();
     }
@@ -65,13 +73,14 @@ internal sealed class RegionForm : Form {
         Graphics g=e.Graphics;Rectangle clip=Rectangle.Intersect(e.ClipRectangle,ClientRectangle);if(!clip.IsEmpty)g.DrawImage(dimmed,clip,clip,GraphicsUnit.Pixel);
         if(selected.Width>1&&selected.Height>1){
             GraphicsState state=g.Save();g.SetClip(selected,CombineMode.Intersect);
-            if(view!=null&&!selecting&&!moveCrop&&resize<0){g.DrawImageUnscaled(view,selected.Left,selected.Top);if(preview!=null)scene.DrawPreview(g,selected,preview);}
-            else{Rectangle r=Rectangle.Intersect(selected,clip);if(!r.IsEmpty)g.DrawImage(frozen,r,r,GraphicsUnit.Pixel);scene.Draw(g,selected,preview,moveMark||scaleMark?chosen:null);}g.Restore(state);
-            using(Pen p=new Pen(Color.FromArgb(65,65,65),1))g.DrawRectangle(p,selected);
+            if(view!=null&&!selecting&&resize<0){g.DrawImageUnscaled(view,selected.Left,selected.Top);if(preview!=null)scene.DrawPreview(g,selected,preview);}
+            else{Rectangle r=Rectangle.Intersect(selected,clip);if(!r.IsEmpty)g.DrawImage(frozen,r,r,GraphicsUnit.Pixel);scene.Draw(g,selected,preview,moveMark||scaleMark?chosen:null);}g.Restore(state);Ui.Prepare(g);g.PixelOffsetMode=PixelOffsetMode.Half;
+            using(Pen p=new Pen(Color.FromArgb(65,65,65),1))g.DrawRectangle(p,selected.X,selected.Y,selected.Width-1,selected.Height-1);
+            g.PixelOffsetMode=PixelOffsetMode.HighQuality;
             if(chosen!=null&&!drawing){Rectangle box=Rectangle.Round(chosen.Extent);using(Pen p=new Pen(Color.FromArgb(40,120,235),1)){p.DashStyle=DashStyle.Dash;g.DrawRectangle(p,box);}DrawHandles(g,box,true);}
             else if(!drawing&&!selecting)DrawHandles(g,selected,false);
-            string size=selected.Width+" × "+selected.Height+" px";Size text=TextRenderer.MeasureText(size,SystemFonts.MessageBoxFont);Rectangle label=new Rectangle(selected.Left,Math.Max(2,selected.Top-27),text.Width+10,22);using(GraphicsPath round=Ui.Round(label,5))using(Brush b=new SolidBrush(Color.FromArgb(42,42,42)))g.FillPath(b,round);TextRenderer.DrawText(g,size,SystemFonts.MessageBoxFont,label,Color.White,TextFormatFlags.HorizontalCenter|TextFormatFlags.VerticalCenter);
-        }else TextRenderer.DrawText(g,"拖动框选屏幕区域 · Esc 取消",SystemFonts.MessageBoxFont,new Point(18,18),Color.White);
+            string size=selected.Width+" × "+selected.Height+" px";Font labelFont=UiTypography.Panel(size);Size text=TextRenderer.MeasureText(size,labelFont);Rectangle label=new Rectangle(selected.Left,Math.Max(2,selected.Top-27),text.Width+10,22);using(GraphicsPath round=Ui.Round(label,5))using(Brush b=new SolidBrush(Color.FromArgb(42,42,42)))g.FillPath(b,round);TextRenderer.DrawText(g,size,labelFont,label,Color.White,TextFormatFlags.HorizontalCenter|TextFormatFlags.VerticalCenter);
+        }else{string hint="拖动框选屏幕区域 · Esc 取消";TextRenderer.DrawText(g,hint,UiTypography.Panel(hint),new Point(18,18),Color.White);}
     }
     private static Point[] Handles(Rectangle r){return new Point[]{new Point(r.Left,r.Top),new Point(r.Left+r.Width/2,r.Top),new Point(r.Right,r.Top),new Point(r.Right,r.Top+r.Height/2),new Point(r.Right,r.Bottom),new Point(r.Left+r.Width/2,r.Bottom),new Point(r.Left,r.Bottom),new Point(r.Left,r.Top+r.Height/2)};}
     private static void DrawHandles(Graphics g,Rectangle r,bool corners){Point[] points=Handles(r);for(int i=0;i<points.Length;i++){if(corners&&i%2==1)continue;Rectangle h=new Rectangle(points[i].X-2,points[i].Y-2,5,5);g.FillRectangle(Brushes.White,h);g.DrawRectangle(Pens.Gray,h);}}
@@ -82,13 +91,13 @@ internal sealed class RegionForm : Form {
         if(tool==DrawTool.Select&&chosen!=null){resize=HitHandle(Rectangle.Round(chosen.Extent),e.Location,true);if(resize>=0){scaleMark=true;originalMark=chosen.Clone();preview=chosen;RebuildView(chosen);Capture=true;panel.Visible=false;return;}}
         if(tool==DrawTool.Select&&selected.Width>1){resize=HitHandle(selected,e.Location,false);if(resize>=0){DropView();Capture=true;panel.Visible=false;return;}
             Mark hit=scene.Hit(e.Location);if(hit!=null&&selected.Contains(e.Location)){chosen=hit;originalMark=hit.Clone();preview=hit;moveMark=true;panel.Tool=hit.Tool;panel.Ink=hit.Color;panel.Stroke=hit.Tool==DrawTool.Mosaic?hit.Width/7:hit.Width;panel.Fill=hit.Fill;panel.FontSize=hit.FontSize;panel.MosaicSize=hit.BlockSize;panel.Ellipse=hit.Tool==DrawTool.Circle;RebuildView(hit);RefreshPanel();Capture=true;FullSelection();return;}
-            chosen=null;panel.Tool=DrawTool.Select;RefreshPanel();if(selected.Contains(e.Location)){if(e.Clicks>=2){Finish(true);return;}moveCrop=true;DropView();Capture=true;panel.Visible=false;return;}
+            chosen=null;panel.Tool=DrawTool.Select;RefreshPanel();if(selected.Contains(e.Location)){if(e.Clicks>=2){Finish(true);return;}moveCrop=true;Capture=true;panel.Visible=false;return;}
         }
         if(selected.Width<2||tool==DrawTool.Select){selected=Rectangle.Empty;selecting=true;chosen=null;preview=null;scene.Clear();DropView();panel.Visible=false;Capture=true;Dirty(cropStart,selected);return;}
         if(!selected.Contains(e.Location))return;Point start=MarkScene.Clamp(e.Location,selected);if(tool==DrawTool.Text){StartText(start);return;}
-        preview=new Mark(tool,panel.Ink,start);preview.Width=tool==DrawTool.Mosaic?Math.Max(18,panel.Stroke*7):panel.Stroke;preview.Fill=panel.Fill;preview.BlockSize=panel.MosaicSize;preview.LockAspect=tool==DrawTool.Circle&&(ModifierKeys&Keys.Shift)!=0;preview.Points.Add(start);drawing=true;Capture=true;
+        preview=new Mark(tool,panel.Ink,start);preview.Width=tool==DrawTool.Mosaic?Math.Max(18,panel.Stroke*7):panel.Stroke;preview.Fill=panel.Fill;preview.BlockSize=panel.MosaicSize;preview.LineSpacing=panel.LineSpacing;preview.LockAspect=tool==DrawTool.Circle&&(ModifierKeys&Keys.Shift)!=0;preview.Points.Add(start);drawing=true;Capture=true;
     }
-    private static void CopyPose(Mark target,Mark source){target.Points.Clear();target.Points.AddRange(source.Points);target.TextWidth=source.TextWidth;target.TextHeight=source.TextHeight;target.FontSize=source.FontSize;}
+    private static void CopyPose(Mark target,Mark source){target.Points.Clear();target.Points.AddRange(source.Points);target.TextWidth=source.TextWidth;target.TextHeight=source.TextHeight;target.FontSize=source.FontSize;target.LineSpacing=source.LineSpacing;}
     protected override void OnMouseMove(MouseEventArgs e){
         base.OnMouseMove(e);Rectangle old=selected;
         if(selecting){selected=Normalize(anchor,e.Location,ClientRectangle);Dirty(old,selected);}
@@ -112,13 +121,13 @@ internal sealed class RegionForm : Form {
             using(Graphics g=Graphics.FromImage(background)){g.TranslateTransform(-bounds.Left,-bounds.Top);g.DrawImageUnscaled(frozen,0,0);scene.Draw(g,selected,null);}
             textEditor=new ScreenshotTextBox(background);
         }
-        textEditor.Font=new Font("Microsoft YaHei UI",panel.FontSize,FontStyle.Regular,GraphicsUnit.Pixel);textEditor.ForeColor=panel.Ink;textEditor.Bounds=bounds;Controls.Add(textEditor);textEditor.BringToFront();textEditor.Focus();
+        textEditor.Font=UiTypography.ForText("",panel.FontSize);textEditor.LineSpacing=panel.LineSpacing;textEditor.ForeColor=panel.Ink;textEditor.Bounds=bounds;Controls.Add(textEditor);textEditor.BringToFront();textEditor.Focus();
     }
     protected override void WndProc(ref Message m){
         if((m.Msg==0x0133||m.Msg==0x0138)&&textEditor!=null&&textEditor.IsHandleCreated&&m.LParam==textEditor.Handle){m.Result=textEditor.PrepareBackground(m.WParam);return;}
         base.WndProc(ref m);
     }
-    private void CommitText(){if(textEditor==null)return;Mark mark=new Mark(DrawTool.Text,textEditor.ForeColor,textAt);mark.Text=textEditor.Text;mark.FontSize=textEditor.Font.Size;mark.TextWidth=Math.Max(8,textEditor.Width);using(Graphics g=CreateGraphics())mark.TextHeight=g.MeasureString(mark.Text,textEditor.Font,(int)mark.TextWidth).Height+6;scene.Add(mark);DiscardText();RebuildView(null);RefreshPanel();FullSelection();}
+    private void CommitText(){if(textEditor==null)return;Mark mark=new Mark(DrawTool.Text,textEditor.ForeColor,textAt);mark.Text=textEditor.Text;mark.FontSize=textEditor.Font.Size;mark.LineSpacing=textEditor.LineSpacing;mark.TextWidth=Math.Max(8,textEditor.Width);using(Graphics g=CreateGraphics())mark.TextHeight=UiTypography.MeasureAnnotation(g,mark.Text,textEditor.Font,mark.TextWidth,mark.LineSpacing)+6;scene.Add(mark);DiscardText();RebuildView(null);RefreshPanel();FullSelection();}
     private void DiscardText(){if(textEditor==null)return;TextBox old=textEditor;textEditor=null;Controls.Remove(old);Font font=old.Font;old.Dispose();font.Dispose();FullSelection();}
     protected override bool ProcessCmdKey(ref Message msg,Keys keys){Touch();if(textEditor!=null){if(keys==(Keys.Control|Keys.Enter)){CommitText();Focus();return true;}if(keys==Keys.Escape){DiscardText();Focus();return true;}if(keys!=(Keys.Control|Keys.S))return base.ProcessCmdKey(ref msg,keys);}
         if(keys==Keys.Escape){Finish(false);return true;}if(keys==Keys.Enter){Finish(true);return true;}if(keys==(Keys.Control|Keys.Z)){Command("undo");return true;}if(keys==(Keys.Control|Keys.Y)||keys==(Keys.Control|Keys.Shift|Keys.Z)){Command("redo");return true;}if(keys==Keys.Delete){Command("delete");return true;}if(keys==(Keys.Control|Keys.C)){Command("copy");return true;}if(keys==(Keys.Control|Keys.S)){Command("save");return true;}return base.ProcessCmdKey(ref msg,keys);

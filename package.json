@@ -1,6 +1,6 @@
 {
   "name": "@local/dsh-focuscapture",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "displayName": "dsh-FocusCapture",
   "private": true,
   "description": "dsh-FocusCapture: compact screen capture, screenshot-background text editing, annotations, and always-on-top pinned images.",
@@ -26,7 +26,7 @@
     "./icon": "./icon.png",
     "./locale/*.json": "./locale/*.json"
   },
-  "files": ["index.js", "host-v1.1.js", "core.js", "client.js", "delivery.js", "native/Snip.cs", "native/Drawing.cs", "native/RegionEditor.cs", "native/EditorUi.cs", "native/ScreenshotTextBox.cs", "native/PinnedShot.cs", "native/EditorTests.cs", "native/keyboard-worker.py", "native/keyboard-runtime.json", "native/DualCtrlSnip.exe", "cordis.patch.yml", "locale/*.json", "icon.png", "README.md", "LICENSE"],
+  "files": ["index.js", "host-v1.1.js", "core.js", "runtime.js", "hotkey.js", "settings.js", "client.js", "delivery.js", "native/Snip.cs", "native/Drawing.cs", "native/RegionEditor.cs", "native/EditorUi.cs", "native/ScreenshotTextBox.cs", "native/PinnedShot.cs", "native/EditorTests.cs", "native/Typography.cs", "native/keyboard-worker.py", "native/keyboard-runtime.json", "native/DualCtrlSnip.exe", "native/fonts/*.ttf", "native/fonts/OFL.txt", "cordis.patch.yml", "locale/*.json", "icon.png", "README.md", "LICENSE"],
   "dsh": {
     "bundle": { "patch": "./cordis.patch.yml" },
     "client": {
@@ -35,5 +35,9 @@
       "inject": ["@deepseek-ai/dsh-client-ui-conversation", "@deepseek-ai/dsh-client-locale"]
     }
   },
-  "scripts": { "test": "node --test --test-concurrency=1 tests/*.test.js" }
+  "scripts": {
+    "build:client": "node build-client.mjs",
+    "test": "node --test --test-concurrency=1 tests/*.test.js",
+    "build:release": "python scripts/release.py build"
+  }
 }

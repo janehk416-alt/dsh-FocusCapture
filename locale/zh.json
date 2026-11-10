@@ -1,1 +1,1 @@
-{"meta":{"title":"dsh-FocusCapture","description":"聊天框仅显示截图图标；双 Ctrl 触发截图，支持无白底文字标注、马赛克、保存复制与置顶贴图，回车图标加入附件草稿。"}}
+{"meta":{"title":"dsh-FocusCapture","description":"区域截图、标注、复制保存与置顶贴图；默认双 Ctrl，可在插件组件配置页自定义快捷键。支持 Josefin Sans、中文回退、跨机器 DSH 运行时定位与启动诊断。"}}
