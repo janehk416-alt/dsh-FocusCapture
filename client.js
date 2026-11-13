@@ -82,7 +82,7 @@ function attachScreenshot(conversation, input, sessionId, image) {
 }
 
     return {
-      inject: ['slots','locale'],
+      inject: ['slots','locale','conversation'],
       apply(ctx) {
         const pageId = crypto.randomUUID();
         const acknowledged = new Set();

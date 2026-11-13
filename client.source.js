@@ -6,7 +6,7 @@ window.__ModuleLoader__.load({
     /* INSERT_DELIVERY */
     /* INSERT_CONFIG */
     return {
-      inject: ['slots','locale'],
+      inject: ['slots','locale','conversation'],
       apply(ctx) {
         const pageId = crypto.randomUUID();
         const acknowledged = new Set();
